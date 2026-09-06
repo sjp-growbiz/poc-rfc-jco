@@ -1,0 +1,42 @@
+services:
+  poc-rfc:
+    build:
+      context: .
+      args:
+        # Cambiar a 17 para repetir la prueba sobre otra versión de Java.
+        JDK: ${JDK:-21}
+    image: poc-rfc-jco:jdk${JDK:-21}
+    container_name: poc-rfc-jco
+
+    # Credenciales y datos del sistema SAP. El .env no se versiona.
+    env_file:
+      - .env
+
+    ports:
+      - "${PORT:-8080}:8080"
+
+    # --- Red -------------------------------------------------------------
+    # Con el bridge por defecto, el tráfico del contenedor sale por la tabla
+    # de rutas del host, así que hereda la VPN. Si el túnel usa policy routing
+    # y el contenedor no alcanza al SAP, comentar 'ports' y descomentar esto:
+    #
+    # network_mode: host
+    #
+    # Y si el host del SAP no resuelve por DNS dentro del contenedor:
+    # extra_hosts:
+    #   - "sapserver.dominio.interno:10.x.x.x"
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

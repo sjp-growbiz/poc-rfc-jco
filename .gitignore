@@ -1,0 +1,94 @@
+# =============================================================================
+# poc-rfc-jco
+# =============================================================================
+
+# --- Secretos ----------------------------------------------------------------
+# Sólo se versiona .env.example, nunca el .env real.
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.keystore
+secrets/
+
+# --- Software licenciado por SAP ---------------------------------------------
+# El jar y la librería nativa de JCo NO se redistribuyen. Se reponen con:
+#     ./setup.sh /ruta/sapjco31P_XX-XXXXXXXX.zip
+libs/*.jar
+native/*.so
+native/*.dll
+native/*.dylib
+native/*.sl
+sapjco*.zip
+sapjco*.tgz
+
+# La criptográfica de SAP, si más adelante hace falta SNC.
+libsapcrypto.*
+sapcryptolib*
+*.sar
+
+# --- Compilación --------------------------------------------------------------
+target/
+build/
+out/
+bin/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.war
+*.ear
+*.nar
+
+# --- Maven --------------------------------------------------------------------
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+pom.xml.bak
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# --- Trazas de JCo y de la JVM ------------------------------------------------
+# El trace de JCo puede contener datos de la conexión: nunca versionarlo.
+JCO*.trc
+jco*.trc
+dev_jco*
+dev_rfc*
+*.trc
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# --- Logs ---------------------------------------------------------------------
+*.log
+logs/
+
+# --- IDE ----------------------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+.apt_generated/
+nbproject/private/
+*.sublime-workspace
+
+# --- Sistema operativo --------------------------------------------------------
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+
+# --- Varios -------------------------------------------------------------------
+*.tmp
+*.swp
+*~

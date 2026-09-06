@@ -1,0 +1,30 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: poc-rfc-jco
+
+# Todo viene del entorno: en este repositorio no hay credenciales.
+jco:
+  destino:  ${JCO_DESTINO:S4HANA_DEST_RFC}
+  ashost:   ${JCO_ASHOST:}
+  sysnr:    ${JCO_SYSNR:}
+  client:   ${JCO_CLIENT:}
+  user:     ${JCO_USER:}
+  passwd:   ${JCO_PASSWD:}
+  lang:     ${JCO_LANG:ES}
+  pool-capacity: ${JCO_POOL_CAPACITY:3}
+  peak-limit:    ${JCO_PEAK_LIMIT:10}
+  snc-mode:      ${JCO_SNC_MODE:0}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.sap.conn.jco: ${JCO_LOG_LEVEL:INFO}
+    pe.bnv.pocrfc: DEBUG
