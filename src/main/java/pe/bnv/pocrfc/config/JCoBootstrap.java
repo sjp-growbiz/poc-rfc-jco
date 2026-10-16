@@ -1,5 +1,6 @@
 package pe.bnv.pocrfc.config;
 
+import com.sap.conn.jco.JCo;
 import com.sap.conn.jco.ext.DestinationDataProvider;
 import com.sap.conn.jco.ext.Environment;
 import jakarta.annotation.PostConstruct;
@@ -22,6 +23,28 @@ public class JCoBootstrap {
 
     @PostConstruct
     void registrar() {
+        // Antes de abrir cualquier conexión: el trace nativo no captura lo que
+        // ya ocurrió.
+        if (props.getTraceLevel() > 0) {
+            boolean aConsola = "consola".equalsIgnoreCase(props.getTraceDestino());
+            if (aConsola) {
+                JCo.addTraceListener(new JCoConsoleTrace());
+            }
+            // setTrace es lo que enciende el nivel: sin él no se emite nada, ni
+            // a archivo ni al listener, y por eso hace falta aunque el destino
+            // sea la consola. Con un listener registrado JCo deja de escribir
+            // los .trc —comprobado—, así que la ruta queda sin uso; se le pasa
+            // el temporal para no crear un /app/trace que nadie va a llenar.
+            String ruta = aConsola ? System.getProperty("java.io.tmpdir") : props.getTracePath();
+            new java.io.File(ruta).mkdirs();
+            JCo.setTrace(props.getTraceLevel(), ruta);
+
+            log.warn("Trace nativo de JCo en nivel {} hacia {}. Es muy verboso y "
+                    + "guarda los datos de la conexión: no dejarlo encendido.",
+                    props.getTraceLevel(),
+                    aConsola ? "la consola (logger com.sap.conn.jco.trace, nivel DEBUG)" : ruta);
+        }
+
         Properties p = new Properties();
         p.setProperty(DestinationDataProvider.JCO_ASHOST, req(props.getAshost(), "JCO_ASHOST"));
         p.setProperty(DestinationDataProvider.JCO_SYSNR,  req(props.getSysnr(),  "JCO_SYSNR"));

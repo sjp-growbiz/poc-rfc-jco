@@ -53,8 +53,18 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
         <configuration>
-          <!-- sin esto, una dependencia system no entra en el jar ejecutable -->
-          <includeSystemScope>true</includeSystemScope>
+          <!--
+            sapjco3 NO se empaqueta dentro del jar ejecutable: JCo comprueba el
+            nombre del archivo desde el que se cargó y aborta si no se llama
+            exactamente "sapjco3.jar". El repackage de Boot lo renombraría a
+            sapjco3-${sapjco.version}.jar y el arranque falla con
+            "Illegal JCo archive ... It is not allowed to rename or repackage".
+
+            Con layout ZIP el jar arranca por PropertiesLauncher, que añade al
+            classpath lo que indique -Dloader.path. Ahí va el sapjco3.jar
+            original, con su nombre intacto (ver Dockerfile).
+          -->
+          <layout>ZIP</layout>
         </configuration>
       </plugin>
     </plugins>

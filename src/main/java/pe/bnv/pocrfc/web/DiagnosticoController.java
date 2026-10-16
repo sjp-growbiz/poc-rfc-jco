@@ -58,17 +58,25 @@ public class DiagnosticoController {
             return r;
         }
         r.put("existe", true);
-        r.put("imports", nombres(f.getImportParameterList()));
-        r.put("exports", nombres(f.getExportParameterList()));
-        r.put("tablas", nombres(f.getTableParameterList()));
+        r.put("imports", campos(f.getImportParameterList()));
+        r.put("exports", campos(f.getExportParameterList()));
+        r.put("tablas", campos(f.getTableParameterList()));
         return r;
     }
 
-    private static Object nombres(JCoParameterList lista) {
+    /**
+     * Nombre, tipo y longitud de cada campo.
+     *
+     * La longitud no es un adorno: JCo trunca en silencio lo que no cabe, así
+     * que un parámetro más corto de lo que uno cree explica respuestas que
+     * parecen correctas y no lo son.
+     */
+    private static Object campos(JCoParameterList lista) {
         if (lista == null) return java.util.List.of();
+        var md = lista.getMetaData();
         var out = new java.util.ArrayList<String>();
         for (int i = 0; i < lista.getFieldCount(); i++) {
-            out.add(lista.getMetaData().getName(i));
+            out.add(md.getName(i) + " " + md.getTypeAsString(i) + "(" + md.getLength(i) + ")");
         }
         return out;
     }

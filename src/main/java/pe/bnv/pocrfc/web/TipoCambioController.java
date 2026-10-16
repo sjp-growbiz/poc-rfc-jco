@@ -13,7 +13,7 @@ import java.util.List;
 @RequestMapping("/api/tipo-cambio")
 public class TipoCambioController {
 
-    private static final DateTimeFormatter SAP = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter SAP = DateTimeFormatter.ofPattern("dd.MM.yy");
 
     private final TipoCambioService servicio;
 
@@ -22,7 +22,7 @@ public class TipoCambioController {
     }
 
     /**
-     * GET /api/tipo-cambio?curr=PEN&fecha=20260906&moneda=USD
+     * GET /api/tipo-cambio?curr=PEN&fecha=06.09.2026&moneda=USD
      * fecha y moneda son opcionales: sin fecha usa hoy, sin moneda devuelve todo.
      */
     @GetMapping

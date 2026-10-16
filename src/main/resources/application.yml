@@ -18,6 +18,14 @@ jco:
   peak-limit:    ${JCO_PEAK_LIMIT:10}
   snc-mode:      ${JCO_SNC_MODE:0}
 
+  # Volcado de la petición y la respuesta de cada RFC en el log de la aplicación.
+  trace-rfc:       ${JCO_TRACE_RFC:true}
+  trace-max-filas: ${JCO_TRACE_MAX_FILAS:10}
+  # Trace nativo de JCo (0-10), a archivos JCO*.trc. Otra cosa, mucho más honda.
+  trace-level:     ${JCO_TRACE_LEVEL:0}
+  trace-path:      ${JCO_TRACE_PATH:/app/trace}
+  trace-destino:   ${JCO_TRACE_DESTINO:archivo}
+
 management:
   endpoints:
     web:
@@ -27,4 +35,8 @@ management:
 logging:
   level:
     com.sap.conn.jco: ${JCO_LOG_LEVEL:INFO}
+    # El puente del trace nativo. Va aparte porque hereda de la línea anterior,
+    # y en INFO no saldría nada: JCo emite casi todo por debajo de ese umbral.
+    # Sólo produce algo con JCO_TRACE_LEVEL > 0 y JCO_TRACE_DESTINO=consola.
+    com.sap.conn.jco.trace: ${JCO_TRACE_LOG_LEVEL:DEBUG}
     pe.bnv.pocrfc: DEBUG

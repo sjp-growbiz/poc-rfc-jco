@@ -1,0 +1,411 @@
+{
+  "info": {
+    "_postman_id": "b7f3c1a2-5d64-4e88-9a10-6c2f0e7d4b31",
+    "name": "poc-rfc-jco",
+    "description": "Sonda de conectividad RFC hacia SAP desde fuera de BTP.\n\nLas peticiones están ordenadas de menor a mayor coste, igual que los escalones de diagnóstico del README: si algo falla, el primer escalón rojo dice dónde se rompe la cadena.\n\n| Escalón | Qué demuestra |\n|---|---|\n| 1 | La librería nativa carga en este SO y esta arquitectura. No toca la red. |\n| 2 | La red llega al gateway y el logon RFC es aceptado. |\n| 3 | El módulo de función existe y su metadata viaja de vuelta. |\n| 4 | La llamada completa, con datos. |\n\nAntes de correr esto hay que tener el contenedor arriba (`docker compose up -d`) y la VPN conectada: sin ella el escalón 2 falla con `JCO_ERROR_COMMUNICATION`.\n\n`I_FECHA` va en formato **dd.MM.yyyy**, no en el `yyyyMMdd` habitual de ABAP. La variable `fechaHoy` la calcula el script de la colección en cada envío; `fecha` se edita a mano para consultar otro día.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// El módulo ABAP exige dd.MM.yyyy. Se calcula la fecha de hoy en ese",
+          "// formato y se deja en {{fechaHoy}} para las peticiones del escalón 4.",
+          "const d = new Date();",
+          "const dd = String(d.getDate()).padStart(2, '0');",
+          "const mm = String(d.getMonth() + 1).padStart(2, '0');",
+          "pm.collectionVariables.set('fechaHoy', dd + '.' + mm + '.' + d.getFullYear());"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string",
+      "description": "Host donde corre el contenedor. Cambiar si se despliega en un servidor."
+    },
+    {
+      "key": "rfc",
+      "value": "ZBTP_OBTENER_TIPO_CAMBIO",
+      "type": "string",
+      "description": "Módulo de función a inspeccionar en el escalón 3."
+    },
+    {
+      "key": "curr",
+      "value": "PEN",
+      "type": "string",
+      "description": "I_CURR: moneda destino de la conversión."
+    },
+    {
+      "key": "moneda",
+      "value": "USD",
+      "type": "string",
+      "description": "Filtro por moneda origen (FCURR). Vaciar para recibir todas."
+    },
+    {
+      "key": "fecha",
+      "value": "04.09.2026",
+      "type": "string",
+      "description": "Fecha en dd.MM.yyyy para la consulta con fecha explícita."
+    },
+    {
+      "key": "fechaHoy",
+      "value": "",
+      "type": "string",
+      "description": "La calcula el script de la colección en cada envío. No editar."
+    }
+  ],
+  "item": [
+    {
+      "name": "0 · Estado del servicio",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            },
+            "description": "El contenedor arrancó y el contexto de Spring está levantado.\n\nOjo: esto responde UP aunque SAP sea inalcanzable. El registro del destino ocurre al arrancar pero no abre ninguna conexión, así que el health no dice nada sobre la red. Para eso está el escalón 2."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 · Librería nativa",
+      "item": [
+        {
+          "name": "GET /api/jco",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/jco",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "jco"]
+            },
+            "description": "libsapjco3.so carga en este SO y esta arquitectura. No toca la red.\n\nSi falla aquí, el problema está en la imagen: arquitectura equivocada (la nativa es linuxx86_64), glibc contra musl, o java.library.path mal apuntado. Nada que ver con SAP todavía.\n\nEl campo `java` sirve para separar las dos preguntas de la POC: que JCo funcione fuera de BTP y que funcione sobre Java 21."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const b = pm.response.json();",
+                  "pm.test('la nativa reporta versión', () => pm.expect(b.version).to.be.a('string').and.not.empty);",
+                  "",
+                  "console.log('JCo ' + b.version + ' | ' + b.os + ' | Java ' + b.java);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 · Red y logon",
+      "item": [
+        {
+          "name": "GET /api/ping",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ping",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ping"]
+            },
+            "description": "La red alcanza el gateway y el logon RFC es aceptado.\n\nEste es el escalón que rompe la VPN. Sin túnel devuelve 502 con `JCO_ERROR_COMMUNICATION` y el detalle `partner ...:33<nn> not reached`: no basta con el 8000 del OData, hacen falta los puertos 33<nn> y 32<nn>.\n\nSi la red llega pero el logon no, el grupo del error cambia: ahí el problema es mandante, usuario o clave."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 502) {",
+                  "    const e = pm.response.json();",
+                  "    console.warn(e.veredicto);",
+                  "    console.warn(`${e.key} (grupo ${e.grupo})`);",
+                  "    // El mensaje trae el diagnóstico crudo de la capa NI de SAP:",
+                  "    // el puerto que intentó, el errno y su texto.",
+                  "    console.warn(e.mensaje);",
+                  "}",
+                  "",
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ping OK', () => pm.expect(pm.response.json().ping).to.eql('OK'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Metadata del módulo",
+      "item": [
+        {
+          "name": "GET /api/metadata",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/metadata?rfc={{rfc}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "metadata"],
+              "query": [
+                {
+                  "key": "rfc",
+                  "value": "{{rfc}}",
+                  "description": "Opcional. Por defecto ZBTP_OBTENER_TIPO_CAMBIO."
+                }
+              ]
+            },
+            "description": "El módulo existe y su metadata viaja de vuelta. Aún no ejecuta ABAP.\n\nDevuelve `existe: false` con 200 si el módulo no está en el sistema o el usuario RFC no tiene autorización para leer el repositorio: eso apunta a roles, no a red.\n\nSirve también para inspeccionar cualquier otro módulo del portafolio cambiando la variable `rfc`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const b = pm.response.json();",
+                  "pm.test('el módulo existe', () => pm.expect(b.existe).to.be.true);",
+                  "",
+                  "// Cada campo viene como 'NOMBRE TIPO(longitud)', p.ej. 'I_FECHA CHAR(8)'.",
+                  "const nombre = c => c.split(' ')[0];",
+                  "pm.test('expone I_CURR e I_FECHA', () => {",
+                  "    pm.expect(b.imports.map(nombre)).to.include.members(['I_CURR', 'I_FECHA']);",
+                  "});",
+                  "pm.test('expone la tabla T_TCURR', () => {",
+                  "    pm.expect(b.tablas.map(nombre)).to.include('T_TCURR');",
+                  "});",
+                  "",
+                  "// I_FECHA es CHAR(8): un dd.MM.yyyy de 10 caracteres se trunca en",
+                  "// silencio y la consulta termina preguntando por otro año.",
+                  "const fechaDef = b.imports.find(c => nombre(c) === 'I_FECHA');",
+                  "console.log('Campos de entrada: ' + b.imports.join(', '));",
+                  "pm.test('I_FECHA sigue siendo CHAR(8)', () => pm.expect(fechaDef).to.eql('I_FECHA CHAR(8)'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 · Llamada completa",
+      "item": [
+        {
+          "name": "GET /api/tipo-cambio · fecha de hoy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tipo-cambio?curr={{curr}}&moneda={{moneda}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tipo-cambio"],
+              "query": [
+                {
+                  "key": "curr",
+                  "value": "{{curr}}",
+                  "description": "I_CURR. Por defecto PEN."
+                },
+                {
+                  "key": "moneda",
+                  "value": "{{moneda}}",
+                  "description": "Filtra por FCURR. Vaciar para recibir todas las monedas."
+                },
+                {
+                  "key": "fecha",
+                  "value": "{{fechaHoy}}",
+                  "description": "Deshabilitado a propósito: sin fecha el backend usa hoy en dd.MM.yyyy.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "La cadena completa, con datos, dejando que el backend ponga la fecha.\n\nEsta petición cubre el caso por defecto del controlador. El parámetro `fecha` está deshabilitado a propósito: habilitarlo manda {{fechaHoy}}, que es lo mismo que calcula el servidor.\n\nEl campo `fecha` de la respuesta es el GDATU crudo de SAP, que viaja invertido (99999999 - aaaammdd). El test lo decodifica en la consola."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const filas = pm.response.json();",
+                  "pm.test('devuelve una lista', () => pm.expect(filas).to.be.an('array'));",
+                  "",
+                  "// Sin fecha se consulta hoy, y por el truncamiento de I_FECHA eso",
+                  "// termina siendo el mismo día de hace seis años. Que no haya",
+                  "// cotización ese día es normal, así que aquí no se exige contenido:",
+                  "// de eso se encarga la petición con fecha explícita.",
+                  "if (filas.length === 0) {",
+                  "    console.warn('Sin cotizaciones para la fecha consultada. Revisar el log:');",
+                  "    console.warn('el trace muestra qué I_FECHA viajó realmente.');",
+                  "}",
+                  "",
+                  "pm.test('el tipo de cambio es un número positivo', () => {",
+                  "    filas.forEach(f => pm.expect(Number(f.tipoCambio)).to.be.above(0));",
+                  "});",
+                  "",
+                  "filas.forEach(f => console.log(`${f.fecha}  ${f.monedaOrigen}/${f.monedaDestino}  ${f.tipoCambio}  (GDATU ${f.gdatu})`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/tipo-cambio · fecha explícita",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tipo-cambio?curr={{curr}}&fecha={{fecha}}&moneda={{moneda}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tipo-cambio"],
+              "query": [
+                {
+                  "key": "curr",
+                  "value": "{{curr}}",
+                  "description": "I_CURR. Por defecto PEN."
+                },
+                {
+                  "key": "fecha",
+                  "value": "{{fecha}}",
+                  "description": "I_FECHA en dd.MM.yyyy. Cualquier otro formato lo rechaza el ABAP."
+                },
+                {
+                  "key": "moneda",
+                  "value": "{{moneda}}",
+                  "description": "Filtra por FCURR. Vaciar para recibir todas las monedas."
+                }
+              ]
+            },
+            "description": "La misma llamada, fijando la fecha, para poder repetir una consulta contra un día concreto y comparar resultados entre corridas."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const filas = pm.response.json();",
+                  "pm.test('devuelve al menos una fila', () => pm.expect(filas).to.be.an('array').that.is.not.empty);",
+                  "",
+                  "const filtro = pm.collectionVariables.get('moneda');",
+                  "if (filtro) {",
+                  "    pm.test('todas las filas son ' + filtro, () => {",
+                  "        filas.forEach(f => pm.expect(f.monedaOrigen).to.eql(filtro));",
+                  "    });",
+                  "}",
+                  "",
+                  "// El GDATU crudo viaja invertido (99999999 - aaaammdd); el backend",
+                  "// lo decodifica y devuelve la fecha ya legible en ISO-8601.",
+                  "pm.test('la fecha viene decodificada en ISO-8601', () => {",
+                  "    filas.forEach(f => pm.expect(f.fecha).to.match(/^\\d{4}-\\d{2}-\\d{2}$/));",
+                  "});",
+                  "",
+                  "filas.forEach(f => console.log(`${f.fecha}  ${f.monedaOrigen}/${f.monedaDestino}  ${f.tipoCambio}  (GDATU ${f.gdatu})`));",
+                  "",
+                  "// Delata el truncamiento: se pidió 2026 y volvió otro año.",
+                  "const pedido = String(pm.collectionVariables.get('fecha')).slice(-4);",
+                  "const vuelto = filas.length ? filas[0].fecha.slice(0, 4) : null;",
+                  "if (vuelto && pedido !== vuelto) {",
+                  "    console.warn(`Se pidió el año ${pedido} y volvió ${vuelto}: I_FECHA es CHAR(8) y truncó el año.`);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/tipo-cambio · formato de fecha inválido",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tipo-cambio?curr={{curr}}&fecha=20260904",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tipo-cambio"],
+              "query": [
+                {
+                  "key": "curr",
+                  "value": "{{curr}}"
+                },
+                {
+                  "key": "fecha",
+                  "value": "20260904",
+                  "description": "yyyyMMdd a propósito: este módulo sólo acepta dd.MM.yyyy."
+                }
+              ]
+            },
+            "description": "Caso negativo, a propósito.\n\nManda la fecha en el `yyyyMMdd` habitual de ABAP, que este módulo no acepta. El servidor responde **422** con el mensaje tal como lo emitió SAP:\n\n```json\n{\n  \"tipo\": \"ABAP\",\n  \"veredicto\": \"El transporte funciona. El error viene de la lógica ABAP del servidor.\",\n  \"grupo\": 104,\n  \"key\": \"JCO_ERROR_SYSTEM_FAILURE\",\n  \"mensaje\": \"Indique una fecha válida\",\n  \"mensajeSap\": { \"clase\": \"SG\", \"numero\": \"102\", \"tipo\": \"E\" }\n}\n```\n\nQueda en la colección porque es el caso que decide la POC: un rechazo del ABAP significa que la cadena completa está viva. Por eso responde 422 y no 502, y por eso el `tipo` dice ABAP.\n\nEl `mensajeSap` es lo que hay que llevarle al equipo funcional: con clase y número se ubica el texto en SE91."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('el ABAP rechaza el formato (422)', () => pm.response.to.have.status(422));",
+                  "",
+                  "const e = pm.response.json();",
+                  "pm.test('se clasifica como error de ABAP, no de transporte', () => {",
+                  "    pm.expect(e.tipo).to.eql('ABAP');",
+                  "    pm.expect(e.key).to.eql('JCO_ERROR_SYSTEM_FAILURE');",
+                  "});",
+                  "pm.test('devuelve el mensaje de SAP', () => {",
+                  "    pm.expect(e.mensaje).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('identifica el mensaje ABAP (clase y número)', () => {",
+                  "    pm.expect(e.mensajeSap).to.have.property('clase');",
+                  "    pm.expect(e.mensajeSap).to.have.property('numero');",
+                  "});",
+                  "",
+                  "const m = e.mensajeSap || {};",
+                  "console.log(`SAP dice: \"${e.mensaje}\"  [${m.clase}${m.numero} tipo ${m.tipo}]`);",
+                  "console.log('El transporte funcionó: el rechazo viene del módulo, no de la red.');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

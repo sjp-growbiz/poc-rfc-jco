@@ -23,6 +23,22 @@ public class JCoProperties {
     /** 0 = sin SNC. Ponerlo a 1 exige el resto de propiedades snc.*. */
     private String sncMode = "0";
 
+    /**
+     * Vuelca al log los parámetros de ida y vuelta de cada llamada RFC.
+     * Encendido: en una sonda, ver qué viajó es el objetivo, no un extra.
+     */
+    private boolean traceRfc = true;
+    /** Tope de filas por tabla en ese volcado: una tabla entera inunda el log. */
+    private int traceMaxFilas = 10;
+    /**
+     * Trace nativo de JCo, 0 a 10. Es el nivel del protocolo, no el de los
+     * datos, y escribe archivos JCO*.trc aparte del log de la aplicación.
+     */
+    private int traceLevel = 0;
+    private String tracePath = "/app/trace";
+    /** Dónde sale el trace nativo: "archivo" (JCO*.trc) o "consola". */
+    private String traceDestino = "archivo";
+
     public String getDestino() { return destino; }
     public void setDestino(String v) { destino = v; }
     public String getAshost() { return ashost; }
@@ -43,4 +59,14 @@ public class JCoProperties {
     public void setPeakLimit(String v) { peakLimit = v; }
     public String getSncMode() { return sncMode; }
     public void setSncMode(String v) { sncMode = v; }
+    public boolean isTraceRfc() { return traceRfc; }
+    public void setTraceRfc(boolean v) { traceRfc = v; }
+    public int getTraceMaxFilas() { return traceMaxFilas; }
+    public void setTraceMaxFilas(int v) { traceMaxFilas = v; }
+    public int getTraceLevel() { return traceLevel; }
+    public void setTraceLevel(int v) { traceLevel = v; }
+    public String getTracePath() { return tracePath; }
+    public void setTracePath(String v) { tracePath = v; }
+    public String getTraceDestino() { return traceDestino; }
+    public void setTraceDestino(String v) { traceDestino = v; }
 }

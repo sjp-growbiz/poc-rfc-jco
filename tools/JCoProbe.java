@@ -115,6 +115,6 @@ public class JCoProbe {
         return v;
     }
     static String hoy() {
-        return new java.text.SimpleDateFormat("yyyyMMdd").format(new java.util.Date());
+        return new java.text.SimpleDateFormat("dd.MM.yyyy").format(new java.util.Date());
     }
 }
