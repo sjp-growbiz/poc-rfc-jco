@@ -249,10 +249,92 @@ de BTP responde `EnvDestinationDataProvider`, que se registra al arrancar. Copia
 `config/` a cada backend y añadir las variables de entorno es todo el trabajo:
 las veinte invocaciones RFC del portafolio quedan intactas.
 
+## Desplegar ABAP @006 por RFC
+
+> El procedimiento completo de un pase (DEV → QAS), con lo que hay que hacer y lo que no,
+> está en [PASES-ABAP.md](PASES-ABAP.md). Esta sección es la referencia de los endpoints.
+
+Amplía la sonda para llevar el cambio `abap/` @006 a DEV (DS4, mandante 100)
+por RFC. Lee con `RPY_PROGRAM_READ` y `RFC_READ_TABLE`, y graba por el canal de ADT
+(`SADT_REST_RFC_ENDPOINT`, el que usa Eclipse), porque `RPY_PROGRAM_UPDATE` no es remoto en DS4.
+**No activa**: graba la versión inactiva en la orden, y
+*Verificar* y *Activar* se hacen en SE80, con alguien mirando.
+
+| Objeto | Qué se graba |
+|---|---|
+| `U32` · `LZGF_CON_PORTALU32` (FM `ZBVMM_OC_GUARDAR_ENTREGAV2`) | El include completo de `propuesto/` |
+| `F01` · `LZGF_CON_PORTALF01` | El include **activo** con solo la rutina `lotes_modif` reemplazada por `propuesto/FORM_lotes_modif.abap`. El resto del include no se toca |
+
+```bash
+./setup.sh /ruta/sapjco31P_XX-XXXXXXXX.zip      # una vez: jar y nativa de JCo
+ENV_FILE=.env.dev docker compose up --build     # DEV, solo lectura
+```
+
+1. `GET /api/abap/capacidades` muestra qué módulos `RPY_*` ofrece el sistema y con qué firma.
+2. `GET /api/abap/006/comparar` lee lo activo y lo deja en `abap/*/006-lote-unico-bultos/activo/`.
+   Además lo compara con `actual/`, sin contar los espacios finales. Cada objeto queda en uno de estos estados:
+   - `LISTO`: lo activo es igual a `actual/` y se puede grabar.
+   - `YA_APLICADO`: lo activo ya es `propuesto/`.
+   - `DIFIERE_DE_LA_BASE`: alguien cambió el objeto. **Parar** y llevar @006 sobre lo activo,
+     en `propuesto-activo/` (el archivo y su `.base.abap`, que es la versión activa de la que parte).
+     Si esa carpeta existe, manda sobre `propuesto/` y la igualdad se exige contra su base.
+   - `HAY_VERSION_INACTIVA`: alguien lo tiene a medias (hay una versión inactiva distinta del objetivo).
+   - `GRABADO_PENDIENTE_DE_ACTIVAR`: @006 ya está grabado como inactivo; falta activarlo en SE80.
+3. Volver a levantar con la escritura encendida y grabar:
+
+   ```bash
+   ENV_FILE=.env.dev ABAP_ESCRITURA=true docker compose up -d
+   curl -s -X POST "localhost:8080/api/abap/006/aplicar?orden=DS4KNNNNNN&objeto=U32&confirmar=true" | jq
+   curl -s -X POST "localhost:8080/api/abap/006/aplicar?orden=DS4KNNNNNN&objeto=F01&confirmar=true" | jq
+   ```
+
+   Antes de grabar, vuelve a leer lo activo y exige `LISTO`. También comprueba en `E070` que la orden
+   exista y esté modificable (`TRSTATUS = D`). Después de grabar relee el objeto, y para dar `ok`
+   la última versión tiene que ser el objetivo y la activa tiene que seguir igual. Si la activa cambió,
+   el sistema ignoró `SAVE_INACTIVE` y la respuesta trae `ALERTA`: hay que ir a SE80 y *Verificar* enseguida.
+   La respuesta trae además el resultado de *Verificar*; se puede repetir con
+   `GET /api/abap/006/verificar?objeto=F01&version=inactive`, que no modifica nada.
+   Una vez activado, usar `version=active`.
+
+   Si SAP responde que el objeto ya está bloqueado en otra orden, hay que usar esa orden:
+   un objeto no puede estar en dos órdenes abiertas a la vez.
+4. En SE80 → `ZGF_CON_PORTAL`: *Verificar* (Ctrl+F2) y, sin errores, *Activar* (Ctrl+F3).
+   Para volver atrás antes de activar, borrar la versión inactiva desde *Utilidades → Versiones*.
+5. Apagar la escritura: `ENV_FILE=.env.dev docker compose up -d`.
+
+### Llevar el cambio a QAS con un transporte de copias
+
+Las órdenes de workbench siguen abiertas; a QAS va una orden de copias (tipo T) con sus objetos.
+Requiere `ABAP_ESCRITURA=true`.
+
+```bash
+curl -s -X POST -G localhost:8080/api/abap/transporte/copias   --data-urlencode "origen=DS4K928176" --data-urlencode "origen=DS4K929212"   --data-urlencode "destino=QS4.100" --data-urlencode "texto=TdC: ..."   --data-urlencode "excluir=ZBVMM_ST_GUARDAR_ENTREGA_DETVM" | jq
+curl -s -X POST "localhost:8080/api/abap/transporte/liberar?orden=DS4KNNNNNN&confirmar=true" | jq
+```
+
+- `copias` crea la orden (`TR_EXT_CREATE_REQUEST`) e inserta los objetos de las órdenes de origen y de
+  sus tareas (`TR_EXT_INSERT_IN_REQUEST`). `TR_COPY_COMM` no es remoto en DS4.
+- `excluir` saca objetos por nombre. Hace falta para los que se borraron en DEV: SAP no libera una
+  copia que los lleve sin marca de borrado.
+- `liberar` solo acepta órdenes tipo T y usa ADT (`relwithignlock`), porque los objetos siguen
+  bloqueados en las órdenes originales y `BAPI_CTREQUEST_RELEASE` rechaza las de copias.
+- `borrar` elimina una orden de copias que no se llegó a liberar.
+- `importar` trae la orden liberada al sistema al que se está conectado (`ENV_FILE=.env.qas`),
+  con `CTS_API_IMPORT_CHANGE_REQUEST`. Solo en los sistemas de `abap.importar-en` (por defecto `QS4`).
+
+Requisitos del usuario RFC de `.env.dev`: `S_RFC` sobre los grupos de los
+`RPY_*`, de `RFC_READ_TABLE` y de `SADT_REST_RFC_ENDPOINT`, `S_ADT_RES`, `S_DEVELOP` con `ACTVT 02` sobre `PROG`, y
+`S_TABU_DIS` para leer `E070` y `DWINACTIV`. Además, una clave de
+desarrollador registrada (SSCR). El usuario también tiene que poder grabar en
+la orden: debe tener una tarea dentro de ella.
+
+`GET /api/abap/fuente?include=NOMBRE[&ultimaVersion=true]` devuelve el texto de
+cualquier include. Lee `SOURCE_EXTENDED` (255 columnas), porque `SOURCE` corta las líneas en 72.
+
 ## Lo que este proyecto no hace
 
 - No usa XSUAA: no hay autenticación. Es una sonda, no un servicio.
-  No exponerla fuera de la red de pruebas.
+  No exponerla fuera de la red de pruebas, y menos con `ABAP_ESCRITURA=true`.
 - No usa el servicio de destinos de BTP ni el Cloud Connector.
 - No cubre SNC. Si el sistema lo exige, hay que añadir las propiedades `snc.*`
   y la librería criptográfica.

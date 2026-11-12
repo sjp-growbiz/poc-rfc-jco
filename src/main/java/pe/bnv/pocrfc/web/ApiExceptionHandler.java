@@ -93,6 +93,29 @@ public class ApiExceptionHandler {
                 .body(r);
     }
 
+    /** Rechazos del despliegue ABAP: el motivo y el detalle que lo justifica. */
+    @ExceptionHandler(pe.bnv.pocrfc.abap.Cambio006Service.Rechazo.class)
+    public ResponseEntity<Map<String, Object>> rechazo(pe.bnv.pocrfc.abap.Cambio006Service.Rechazo e) {
+        log.warn("Despliegue ABAP rechazado · {}", e.getMessage());
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("tipo", "RECHAZO");
+        r.put("mensaje", e.getMessage());
+        if (e.detalle != null && !e.detalle.isEmpty()) {
+            r.put("detalle", e.detalle);
+        }
+        return ResponseEntity.status(e.status).body(r);
+    }
+
+    /** Una precondición del sistema que no se cumple (módulo o parámetro ausente). */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> estado(IllegalStateException e) {
+        log.warn("Precondición no cumplida · {}", e.getMessage());
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("tipo", "PRECONDICION");
+        r.put("mensaje", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(r);
+    }
+
     @ExceptionHandler(Throwable.class)
     public ResponseEntity<Map<String, Object>> otro(Throwable e) {
         log.error("Error no esperado", e);

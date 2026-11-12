@@ -1,0 +1,86 @@
+@@ -28,6 +28,20 @@
+         lv_unidad      TYPE vrkme,                "+@004
+         lv_nueva_sub   TYPE abap_bool.            "+@005
+ 
++*{+@006 Un lote nuevo repartido en varios bultos llega como varias filas con
++*       el mismo vencimiento (una por bulto). Se crea un solo lote por
++*       vencimiento y posición; las demás filas lo reutilizan.
++  TYPES: BEGIN OF lty_nuevo,
++           ltvfdat TYPE zbvmm_st_guardar_entrega_det_m-ltvfdat,
++           posnr   TYPE lips-posnr,
++           charg   TYPE charg_d,
++           idx     TYPE sy-tabix,          "fila en ct_item_data
++         END OF lty_nuevo.
++  DATA: lt_nuevo  TYPE STANDARD TABLE OF lty_nuevo,
++        lt_fechas TYPE STANDARD TABLE OF zbvmm_st_guardar_entrega_det_m-ltvfdat
++                  WITH DEFAULT KEY.
++*}+@006
++
+   "+@004 Una sola vez por llamada: proce_hu llama dos veces a modif_entrega
+   "y la segunda no debe volver a crear lotes ni subposiciones.
+   CHECK gv_lotes_mod_hechos EQ abap_false.
+@@ -72,11 +86,22 @@
+   LOOP AT lt_pos ASSIGNING FIELD-SYMBOL(<fs_pos>).
+ 
+     CLEAR: lv_hay_lotes, lv_hay_splits, lv_n_lotes, lv_nueva_sub.     "+@005
++    CLEAR: lt_nuevo, lt_fechas.                   "+@006
+ 
+     LOOP AT it_lot ASSIGNING FIELD-SYMBOL(<fs_lot>)
+                    WHERE ebeln EQ <fs_pos>-vgbel
+                      AND ebelp EQ <fs_pos>-vgpos.
+       lv_hay_lotes = abap_true.
++      "+@006 Lotes nuevos con el mismo vencimiento son UN lote (en varios
++      "bultos): cuentan una vez. Decide si el lote va en la posición padre.
++      IF <fs_lot>-posnr IS INITIAL.                                   "+@006
++        READ TABLE lt_fechas TRANSPORTING NO FIELDS                   "+@006
++             WITH KEY table_line = <fs_lot>-ltvfdat.                  "+@006
++        IF sy-subrc EQ 0.                                             "+@006
++          CONTINUE.                                                   "+@006
++        ENDIF.                                                        "+@006
++        APPEND <fs_lot>-ltvfdat TO lt_fechas.                         "+@006
++      ENDIF.                                                          "+@006
+       lv_n_lotes = lv_n_lotes + 1.                "+@004
+     ENDLOOP.
+ 
+@@ -149,6 +174,29 @@
+                      AND ebelp EQ <fs_pos>-vgpos
+                      AND posnr IS INITIAL.
+ 
++*{+@006 Mismo vencimiento que un lote nuevo ya preparado para esta posición:
++*       es el mismo lote en otro bulto. No se crea otro lote ni otra
++*       subposición: se suma la cantidad a la línea ya preparada y se
++*       registra la parte de este bulto para el embalaje.
++      READ TABLE lt_nuevo ASSIGNING FIELD-SYMBOL(<fs_nuevo>)
++           WITH KEY ltvfdat = <fs_lot>-ltvfdat.
++      IF sy-subrc EQ 0.
++        READ TABLE ct_item_data ASSIGNING FIELD-SYMBOL(<fs_id_nuevo>)
++             INDEX <fs_nuevo>-idx.
++        IF sy-subrc EQ 0.
++          <fs_id_nuevo>-dlv_qty = <fs_id_nuevo>-dlv_qty + <fs_lot>-ltmenge.
++        ENDIF.
++        <fs_lot>-charg = <fs_nuevo>-charg.
++        <fs_lot>-posnr = <fs_nuevo>-posnr.
++        IF <fs_lot>-vhilmlt IS NOT INITIAL.
++          APPEND VALUE #( posnr    = <fs_lot>-posnr
++                          vhilm_ku = <fs_lot>-vhilmlt
++                          cant     = <fs_lot>-ltmenge ) TO gt_lote_bulto.
++        ENDIF.
++        CONTINUE.
++      ENDIF.
++*}+@006
++
+       CLEAR: lwa_batchattr, lv_charg.
+       REFRESH lt_return.
+       lv_matnr_batch = <fs_lips_p>-matnr.
+@@ -232,6 +280,11 @@
+       ENDIF.
+ 
+       <fs_lot>-posnr = <fs_id>-deliv_item.
++      "+@006 Para que las demás filas del mismo vencimiento lo reutilicen.
++      APPEND VALUE #( ltvfdat = <fs_lot>-ltvfdat
++                      posnr   = <fs_lot>-posnr
++                      charg   = lv_charg
++                      idx     = lines( ct_item_data[] ) ) TO lt_nuevo.
+       "+@004 Reparto lote -> bulto para el embalaje (el lote viene anidado en
+       "su bulto; el DPC rellena VHILMLT si el portal no lo envía).
+       IF <fs_lot>-vhilmlt IS NOT INITIAL.

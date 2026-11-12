@@ -58,3 +58,23 @@ Réplica del algoritmo en Python (scratchpad de la sesión, `sim_006.py`):
 | Posición sin lotes en 2 bultos | Igual que hoy: 1 lote por el total, reparto por orden. |
 | Material sin gestión de lote | Igual que hoy. |
 | Almacén sin HU / pedido ZREP / importación ZBIM | Igual que hoy. |
+
+## Aplicación
+
+**11.11.2026 · DS4 mandante 100 · activo en DS4 e importado en QAS, pendiente de probar.**
+
+- **Cómo:** por RFC con `poc-rfc-jco` (canal ADT, `SADT_REST_RFC_ENDPOINT`), usuario `ABAP_03`.
+- **Orden de transporte:** `DS4K928176`. Se intentó primero en `DS4K929212` y SAP lo
+  rechazó: la FM ya estaba bloqueada en `DS4K928176` (la orden de la @003), que sigue abierta.
+  La parte de modificación de @006 va en `DS4K929212`: las dos órdenes viajan juntas.
+- **Diferencias con lo activo:** ninguna. Lo activo era igual a `actual/` (@003, 1731 líneas).
+- **Grabación:** `propuesto/LZGF_CON_PORTALU32.abap` completo, 1811 líneas. La interfaz no
+  cambia. Releído después: la versión inactiva es la grabada y la activa no cambió.
+- **Verificar:** sin errores. 37 advertencias, todas en otros includes del grupo.
+- **Activar:** activado el 11.11.2026 (ABAP_03, desde la lista de objetos inactivos).
+- **Transporte a QAS:** orden de copias `DS4K929851` (tipo T, destino QS4.100), liberada el
+  11.11.2026 con los 40 objetos de `DS4K928176` y `DS4K929212`. Quedaron fuera la estructura y
+  el tipo tabla `…_DETVM`, borrados en DS4. Las dos órdenes originales siguen modificables.
+  Importada en QS4/100 el 11.11.2026 con `poc-rfc-jco` (usuario `E_SJUAREZ`), código `000`.
+  Comprobado después: el fuente de QAS es idéntico al de DS4 y la sintaxis no da errores.
+- **Pruebas:** ninguna todavía. Procedimiento del pase: `PASES-ABAP.md` en la raíz del proyecto.

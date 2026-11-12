@@ -40,3 +40,11 @@ logging:
     # Sólo produce algo con JCO_TRACE_LEVEL > 0 y JCO_TRACE_DESTINO=consola.
     com.sap.conn.jco.trace: ${JCO_TRACE_LOG_LEVEL:DEBUG}
     pe.bnv.pocrfc: DEBUG
+
+# Despliegue de fuente ABAP por RFC (/api/abap). La escritura viene apagada.
+abap:
+  dir:            ${ABAP_DIR:/app/abap}
+  escritura:      ${ABAP_ESCRITURA:false}
+  marca-inactivo: ${ABAP_MARCA_INACTIVO:X}
+  # Sistemas donde /api/abap/transporte/importar puede importar. Producción no va aquí.
+  importar-en:    ${ABAP_IMPORTAR_EN:QS4}

@@ -9,8 +9,20 @@ services:
     container_name: poc-rfc-jco
 
     # Credenciales y datos del sistema SAP. El .env no se versiona.
+    # ENV_FILE=.env.dev docker compose up   para apuntar a DEV (DS4).
     env_file:
-      - .env
+      - ${ENV_FILE:-.env}
+
+    # Escritura ABAP por /api/abap/006/aplicar: apagada salvo que se arranque
+    # con ABAP_ESCRITURA=true en la línea de comandos. Va aquí y no en el .env
+    # para que encenderla sea siempre un acto explícito.
+    environment:
+      ABAP_ESCRITURA: ${ABAP_ESCRITURA:-false}
+
+    # Carpeta abap/ del repo: /api/abap lee actual/ y propuesto/ y deja la
+    # copia de lo activo en SAP en activo/.
+    volumes:
+      - ./abap:/app/abap
 
     ports:
       - "${PORT:-8080}:8080"
