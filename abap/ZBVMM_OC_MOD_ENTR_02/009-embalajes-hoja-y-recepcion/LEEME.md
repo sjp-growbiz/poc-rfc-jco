@@ -1,5 +1,8 @@
 # @009 · Embalajes que desaparecen en la hoja de embalaje y en Recepción
 
+**Estado: descartado (13.11.2026).** No se aplicará; se sigue con `abap/010-api-handlingunit`
+(sin tocar ABAP). Queda como diagnóstico de la causa.
+
 Include `LZGF_CON_PORTALF01` (grupo `ZGF_CON_PORTAL`), rutinas `prepare_data` y `agregar_mat`.
 Las usa el GET de `ZET_MOSTRAR_REGISTROSet` (`ZBVMM_WEB_OC_REL_PEDC_XCONF_SRV`), que alimenta la hoja
 de embalaje del portal (Solicitar Cita → Ver/Descargar) y la app **Recepción de entregas**.
