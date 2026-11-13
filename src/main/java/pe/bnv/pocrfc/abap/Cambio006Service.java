@@ -44,13 +44,27 @@ public class Cambio006Service {
 
     private static final String GRUPO = "/sap/bc/adt/functions/groups/zgf_con_portal";
 
-    static final List<Objeto> OBJETOS = List.of(
-            new Objeto("U32", "LZGF_CON_PORTALU32",
-                    "ZBVMM_OC_GUARDAR_ENTREGAV2/006-lote-unico-bultos", "LZGF_CON_PORTALU32.abap", null,
-                    GRUPO + "/fmodules/zbvmm_oc_guardar_entregav2", true),
-            new Objeto("F01", "LZGF_CON_PORTALF01",
-                    "ZBVMM_OC_MOD_ENTR_02/006-lote-unico-bultos", "FORM_lotes_modif.abap", "lotes_modif",
-                    GRUPO + "/includes/lzgf_con_portalf01", false));
+    /** Objetos de cada cambio, por su marca. */
+    static final Map<String, List<Objeto>> CAMBIOS = Map.of(
+            "006", List.of(
+                    new Objeto("U32", "LZGF_CON_PORTALU32",
+                            "ZBVMM_OC_GUARDAR_ENTREGAV2/006-lote-unico-bultos", "LZGF_CON_PORTALU32.abap", null,
+                            GRUPO + "/fmodules/zbvmm_oc_guardar_entregav2", true),
+                    new Objeto("F01", "LZGF_CON_PORTALF01",
+                            "ZBVMM_OC_MOD_ENTR_02/006-lote-unico-bultos", "FORM_lotes_modif.abap", "lotes_modif",
+                            GRUPO + "/includes/lzgf_con_portalf01", false)),
+            // @007: una posición de entrega por vencimiento. F01 cambia en varias
+            // rutinas y agrega otras: se reemplaza el include completo.
+            "007", List.of(
+                    new Objeto("U32", "LZGF_CON_PORTALU32",
+                            "ZBVMM_OC_GUARDAR_ENTREGAV2/007-posicion-por-vencimiento", "LZGF_CON_PORTALU32.abap",
+                            null, GRUPO + "/fmodules/zbvmm_oc_guardar_entregav2", true),
+                    new Objeto("U28", "LZGF_CON_PORTALU28",
+                            "ZBVMM_OC_MOD_ENTR_02/007-posicion-por-vencimiento", "LZGF_CON_PORTALU28.abap",
+                            null, GRUPO + "/fmodules/zbvmm_oc_mod_entr_02", true),
+                    new Objeto("F01", "LZGF_CON_PORTALF01",
+                            "ZBVMM_OC_MOD_ENTR_02/007-posicion-por-vencimiento", "LZGF_CON_PORTALF01.abap",
+                            null, GRUPO + "/includes/lzgf_con_portalf01", false)));
 
     private final FuenteAbapRfc rfc;
     private final AbapProperties props;
@@ -231,32 +245,38 @@ public class Cambio006Service {
         }
     }
 
-    private List<Objeto> seleccion(String objeto) {
+    private List<Objeto> seleccion(String cambio, String objeto) {
+        List<Objeto> objetos = CAMBIOS.get(cambio);
+        if (objetos == null) {
+            throw new Rechazo(HttpStatus.NOT_FOUND, "Cambio desconocido: " + cambio
+                    + ". Conocidos: " + new java.util.TreeSet<>(CAMBIOS.keySet()), Map.of());
+        }
         if (objeto == null || objeto.isBlank() || objeto.equalsIgnoreCase("todos")) {
-            return OBJETOS;
+            return objetos;
         }
         String k = objeto.toUpperCase(Locale.ROOT);
-        return OBJETOS.stream().filter(o -> o.clave().equals(k)).findFirst()
+        return objetos.stream().filter(o -> o.clave().equals(k)).findFirst()
                 .map(List::of)
                 .orElseThrow(() -> new Rechazo(HttpStatus.BAD_REQUEST,
-                        "objeto debe ser U32, F01 o todos", Map.of("objeto", objeto)));
+                        "objeto debe ser uno de " + objetos.stream().map(Objeto::clave).toList() + " o todos",
+                        Map.of("objeto", objeto)));
     }
 
     /** Paso B del README: lee lo activo, lo guarda en activo/ y lo compara con actual/. Solo lee en SAP. */
-    public Map<String, Object> comparar(String objeto) throws JCoException, IOException {
+    public Map<String, Object> comparar(String cambio, String objeto) throws JCoException, IOException {
         Map<String, Object> r = new LinkedHashMap<>();
-        for (Objeto o : seleccion(objeto)) {
+        for (Objeto o : seleccion(cambio, objeto)) {
             r.put(o.clave(), evaluar(o, true).informe());
         }
         return r;
     }
 
     /** El Ctrl+F2 de SE80 sobre la versión inactiva (o la activa si no hay). No modifica nada. */
-    public Map<String, Object> verificar(String objeto, String version) throws JCoException {
+    public Map<String, Object> verificar(String cambio, String objeto, String version) throws JCoException {
         Map<String, Object> r = new LinkedHashMap<>();
         java.util.regex.Pattern msg = java.util.regex.Pattern.compile(
                 "<chkrun:checkMessage chkrun:uri=\"([^\"]*)\" chkrun:type=\"(.)\" chkrun:shortText=\"([^\"]*)\"");
-        for (Objeto o : seleccion(objeto)) {
+        for (Objeto o : seleccion(cambio, objeto)) {
             AdtRfc.Respuesta x = adt.verificarSintaxis(o.uriAdt(), version);
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("status", x.status() + " " + x.motivo());
@@ -278,16 +298,18 @@ public class Cambio006Service {
         return r;
     }
 
-    /** Graba @006 como inactivo en la orden indicada. */
-    public Map<String, Object> aplicar(String orden, String objeto, boolean confirmar, boolean omitirChequeoOrden)
+    /** Graba el cambio como inactivo en la orden indicada. */
+    public Map<String, Object> aplicar(String cambio, String orden, String objeto, boolean confirmar,
+                                       boolean omitirChequeoOrden)
             throws JCoException, IOException {
+        List<Objeto> objetos = seleccion(cambio, objeto);
         if (!props.isEscritura()) {
             throw new Rechazo(HttpStatus.FORBIDDEN,
                     "Escritura ABAP apagada. Arrancar con ABAP_ESCRITURA=true solo para el despliegue.", Map.of());
         }
         if (!confirmar) {
             throw new Rechazo(HttpStatus.BAD_REQUEST,
-                    "Falta confirmar=true. Antes, revisar /api/abap/006/comparar.", Map.of());
+                    "Falta confirmar=true. Antes, revisar /api/abap/" + cambio + "/comparar.", Map.of());
         }
         String tr = orden == null ? "" : orden.trim().toUpperCase(Locale.ROOT);
         if (!ORDEN.matcher(tr).matches()) {
@@ -300,7 +322,7 @@ public class Cambio006Service {
 
         List<Estado> estados = new ArrayList<>();
         Map<String, Object> previo = new LinkedHashMap<>();
-        for (Objeto o : seleccion(objeto)) {
+        for (Objeto o : objetos) {
             Estado e = evaluar(o, true);
             estados.add(e);
             previo.put(o.clave(), e.informe());
@@ -316,7 +338,7 @@ public class Cambio006Service {
         for (Estado e : estados) {
             Objeto o = e.o();
             if (e.estado().equals("YA_APLICADO")) {
-                resultado.put(o.clave(), Map.of("include", o.include(), "resultado", "ya estaba activo con @006; no se grabó"));
+                resultado.put(o.clave(), Map.of("include", o.include(), "resultado", "ya estaba activo con @" + cambio + "; no se grabó"));
                 continue;
             }
             List<String> paraAdt = fuenteParaAdt(e);
@@ -346,6 +368,61 @@ public class Cambio006Service {
                 "Verificar (Ctrl+F2). Si hay errores, anotar línea y mensaje y NO activar.",
                 "Activar (Ctrl+F3) solo los objetos de la orden " + tr + ".",
                 "Volver atrás antes de activar: Utilidades → Versiones → borrar la versión inactiva."));
+        return r;
+    }
+
+    /**
+     * Activa los objetos del cambio (Ctrl+F3). Solo si todos están en
+     * GRABADO_PENDIENTE_DE_ACTIVAR (la versión inactiva es exactamente la
+     * nuestra) y la verificación de la inactiva no da errores. Después, cada
+     * objeto tiene que quedar YA_APLICADO.
+     */
+    public Map<String, Object> activar(String cambio, boolean confirmar) throws JCoException, IOException {
+        if (!props.isEscritura()) {
+            throw new Rechazo(HttpStatus.FORBIDDEN,
+                    "Escritura ABAP apagada. Arrancar con ABAP_ESCRITURA=true solo para el despliegue.", Map.of());
+        }
+        if (!confirmar) {
+            throw new Rechazo(HttpStatus.BAD_REQUEST, "Falta confirmar=true.", Map.of());
+        }
+        List<Objeto> objetos = seleccion(cambio, null);
+        Map<String, Object> r = new LinkedHashMap<>();
+        Map<String, Object> previo = new LinkedHashMap<>();
+        for (Objeto o : objetos) {
+            Estado e = evaluar(o, false);
+            previo.put(o.clave(), e.estado());
+            if (!e.estado().equals("GRABADO_PENDIENTE_DE_ACTIVAR")) {
+                throw new Rechazo(HttpStatus.CONFLICT, o.clave() + " está en estado " + e.estado()
+                        + ": solo se activa lo grabado por este cambio.", previo);
+            }
+        }
+        r.put("antes", previo);
+        Map<String, Object> ver = verificar(cambio, null, "inactive");
+        for (Map.Entry<String, Object> v : ver.entrySet()) {
+            Object err = ((Map<?, ?>) v.getValue()).get("errores");
+            if (err instanceof List<?> l && !l.isEmpty()) {
+                throw new Rechazo(HttpStatus.CONFLICT, v.getKey() + " tiene errores de sintaxis: no se activa.", ver);
+            }
+        }
+        List<String[]> refs = new ArrayList<>();
+        for (Objeto o : objetos) {
+            String uri = o.uriAdt();
+            refs.add(new String[]{uri, uri.substring(uri.lastIndexOf('/') + 1).toUpperCase(Locale.ROOT)});
+        }
+        AdtRfc.Respuesta a = adt.activar(refs);
+        r.put("activacion", resumen(a));
+        Map<String, Object> despues = new LinkedHashMap<>();
+        boolean ok = a.ok();
+        for (Objeto o : objetos) {
+            String est = evaluar(o, true).estado();
+            despues.put(o.clave(), est);
+            ok &= est.equals("YA_APLICADO");
+        }
+        r.put("despues", despues);
+        r.put("ok", ok);
+        if (!ok) {
+            throw new Rechazo(HttpStatus.BAD_GATEWAY, "La activación no dejó todo YA_APLICADO. Revisar en SE80.", r);
+        }
         return r;
     }
 

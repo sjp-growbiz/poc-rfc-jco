@@ -17,8 +17,8 @@ import java.util.Map;
  *
  *   GET  /api/abap/capacidades              qué módulos RPY_* ofrece el sistema
  *   GET  /api/abap/fuente?include=X         fuente activa (texto plano)
- *   GET  /api/abap/006/comparar             lo activo contra actual/; guarda activo/
- *   POST /api/abap/006/aplicar?orden=...    graba @006 INACTIVO en la orden
+ *   GET  /api/abap/{cambio}/comparar        lo activo contra actual/; guarda activo/ (006, 007)
+ *   POST /api/abap/{cambio}/aplicar?orden=...  graba el cambio INACTIVO en la orden
  */
 @RestController
 @RequestMapping("/api/abap")
@@ -72,21 +72,23 @@ public class AbapController {
         return String.join("\n", rfc.leer(include.trim().toUpperCase(), ultimaVersion)) + "\n";
     }
 
-    @GetMapping("/006/comparar")
-    public Map<String, Object> comparar(@RequestParam(required = false) String objeto)
+    @GetMapping("/{cambio}/comparar")
+    public Map<String, Object> comparar(@PathVariable String cambio,
+                                        @RequestParam(required = false) String objeto)
             throws JCoException, IOException {
-        return cambio.comparar(objeto);
+        return this.cambio.comparar(cambio, objeto);
     }
 
     /** Verificación de sintaxis (Ctrl+F2) de lo grabado. No modifica nada en SAP. */
-    @GetMapping("/006/verificar")
-    public Map<String, Object> verificar(@RequestParam(required = false) String objeto,
+    @GetMapping("/{cambio}/verificar")
+    public Map<String, Object> verificar(@PathVariable String cambio,
+                                         @RequestParam(required = false) String objeto,
                                          @RequestParam(defaultValue = "active") String version)
             throws JCoException {
         if (!version.equals("active") && !version.equals("inactive")) {
             throw new IllegalArgumentException("version debe ser active o inactive");
         }
-        return cambio.verificar(objeto, version);
+        return this.cambio.verificar(cambio, objeto, version);
     }
 
     /** Crea un transporte de copias con los objetos de las órdenes de origen. No libera. */
@@ -134,12 +136,21 @@ public class AbapController {
         return copias.liberar(orden, confirmar);
     }
 
-    @PostMapping("/006/aplicar")
-    public Map<String, Object> aplicar(@RequestParam String orden,
+    /** Activa los objetos del cambio ya grabados como inactivos (Ctrl+F3). */
+    @PostMapping("/{cambio}/activar")
+    public Map<String, Object> activar(@PathVariable String cambio,
+                                       @RequestParam(defaultValue = "false") boolean confirmar)
+            throws JCoException, IOException {
+        return this.cambio.activar(cambio, confirmar);
+    }
+
+    @PostMapping("/{cambio}/aplicar")
+    public Map<String, Object> aplicar(@PathVariable String cambio,
+                                       @RequestParam String orden,
                                        @RequestParam(defaultValue = "todos") String objeto,
                                        @RequestParam(defaultValue = "false") boolean confirmar,
                                        @RequestParam(defaultValue = "false") boolean omitirChequeoOrden)
             throws JCoException, IOException {
-        return cambio.aplicar(orden, objeto, confirmar, omitirChequeoOrden);
+        return this.cambio.aplicar(cambio, orden, objeto, confirmar, omitirChequeoOrden);
     }
 }

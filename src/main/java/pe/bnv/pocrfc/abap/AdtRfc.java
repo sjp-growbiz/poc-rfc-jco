@@ -158,6 +158,25 @@ public class AdtRfc {
         return pedir("POST", "/sap/bc/adt/checkruns?reporters=abapCheckRun", h, xml);
     }
 
+    /**
+     * Activa exactamente los objetos indicados (el Ctrl+F3 de SE80 sobre ellos).
+     * preauditRequested=false: no arrastra otros objetos inactivos del usuario.
+     * Cada elemento: {uri ADT, nombre}. Si SAP no activa, el cuerpo trae los mensajes.
+     */
+    public Respuesta activar(List<String[]> objetos) throws JCoException {
+        StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                + "<adtcore:objectReferences xmlns:adtcore=\"http://www.sap.com/adt/core\">");
+        for (String[] o : objetos) {
+            xml.append("<adtcore:objectReference adtcore:uri=\"").append(o[0])
+               .append("\" adtcore:name=\"").append(o[1]).append("\"/>");
+        }
+        xml.append("</adtcore:objectReferences>");
+        Map<String, String> h = new LinkedHashMap<>();
+        h.put("Content-Type", "application/xml");
+        h.put("Accept", "application/xml");
+        return pedir("POST", "/sap/bc/adt/activation?method=activate&preauditRequested=false", h, xml.toString());
+    }
+
     public static class AdtError extends RuntimeException {
         public final Respuesta respuesta;
 

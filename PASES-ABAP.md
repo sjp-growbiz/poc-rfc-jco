@@ -261,6 +261,26 @@ si otro usuario recibe un error de autorización.
 | Verificación en QAS | Fuente idéntico al de DS4; sintaxis sin errores; `TPALOG` todo en `0000` |
 | Pendiente | Pruebas funcionales en el portal contra QAS; decidir si la marca pasa a `@007` |
 
+## Registro del pase @007 (12–13.11.2026)
+
+| Qué | Dato |
+|---|---|
+| Objetos | `LZGF_CON_PORTALU32`, `LZGF_CON_PORTALU28` y `LZGF_CON_PORTALF01` (include completo) |
+| Herramienta | Los endpoints pasan a `/api/abap/{cambio}/…` (006, 007). Nuevo `POST /api/abap/{cambio}/activar?confirmar=true` (ADT `/sap/bc/adt/activation`), sin usar todavía |
+| Órdenes | Las mismas de @006: `DS4K928176` y `DS4K929212` |
+| Activación en DS4 | A mano en SE80. Los tres objetos juntos: U28 sola no compila sin el F01 nuevo |
+| Transporte de copias | `DS4K929891`, armado y liberado a mano en SE01 sin las 4 entradas `…_DETVM`; importado en QS4/100 con `000` |
+| Verificación en QAS | Fuente idéntico al grabado; sintaxis sin errores; `TPALOG` todo en `0000` |
+
+Lecciones:
+
+- **Una clave con `$` en un `.env` llega cortada al contenedor.** Docker Compose toma `$…` como una
+  variable. Hay que poner el valor entre comillas simples (`JCO_PASSWD='…'`) o escribir `$$`. Para
+  comprobarlo sin mostrar la clave, comparar su largo en el archivo y en `docker inspect`.
+- **Después de cambiar un `.env`, recrear el contenedor** (`--force-recreate`). Con `up -d` a veces
+  solo se reinicia y sigue usando las variables viejas.
+- **Si el login falla, detener el contenedor enseguida.** Los reintentos pueden bloquear el usuario.
+
 Intentos fallidos que dejaron rastro: un dump `CALL_FUNCTION_NOT_REMOTE` en ST22 de DS4
 (`ABAP_03`, por `RPY_PROGRAM_UPDATE` y otro por `TR_COPY_COMM`) y la orden de copias
 `DS4K929850`, que se creó con los objetos borrados, no se pudo liberar y se eliminó.
